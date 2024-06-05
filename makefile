@@ -173,6 +173,7 @@ EXTRAINCDIRS =
 # Define linker script file here
 #
 ifeq ($(RUN_FROM_FLASH), 1)
+
  ifeq ($(REVX), 1)
   LDSCRIPT = sam3s8c_boot.ld
   FULL_PRJ = $(PROJECT)_flash8
@@ -187,6 +188,16 @@ ifeq ($(RUN_FROM_FLASH), 1)
  TRGT = arm-none-eabi-
  CPPDEFS += -DPCBSKY 
  UDEFS = -Dat91sam3s8
+
+   #steering of LCD type -- If none given, it defaults to er9x original type 
+   ifeq ($(ERC12864_14), 1)
+      CPPDEFS += -DERC12864_14         # the currently available 3" 128x64 COG LCD from ERC ( June 2024)
+   else ifeq ($(ERC24064_1), 1)
+      CPPDEFS += -DERC24064_1       # a 240x64 LCD with a 1608 controller from erc
+   else ifeq ($(ERC12864_2), 1)
+      CPPDEFS += -DERC12864_2       # the old ERC 128x64 -- not available anymore
+   endif
+
 else
  ifeq ($(PCB), X9D)
   ARCH = ARM
@@ -785,7 +796,10 @@ CPFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 ifeq ($(REVX), 1)
  CPPDEFS += -DREVX
  EXT_MOD=REVB-X
+
+
 endif
+
 
 CPPDEFS += -DCPUARM
 

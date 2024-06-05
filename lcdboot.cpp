@@ -17,6 +17,18 @@
  */
 
 // This version for ARM based ERSKY9X board
+/*   For editing enable these defines so that the IDE can blank out code
+#define PCBSKY
+#define REVB
+#define REVX
+#define JR9303
+
+// one of these three must be defined otherwise the old original ersky LCD is used
+//#define ERC24064_1		// the 240 by 64 erc 
+//#define ERC12864_2	 // the old 128x64 ERC 
+//#define ERC12864_14	// The currently available 128x64 one -- as of 5/2024
+*/
+	
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -497,102 +509,204 @@ uint8_t LcdInputs ;
 
 #ifdef PCBSKY
 
-uint8_t ErcLcd = 0 ;
 
-const static uint8_t Lcdinit[] =
-{
-	0xe2, 0xae, 0xa1, 0xA6, 0xA4, 0xA2, 0xC0, 0x2F, 0x25, 0x81, 0x22, 0xAF
-} ;	
+#if defined ERC12864_14
+	#define PAGE_ADDR_OFFSET 0
+	#define COL_ADDR_OFFSET 0 
+	#define LCD_MAX_X 135
+	#define LCD_CLEAR_NEEDED	
+	const static uint8_t Lcd_init[] =
+	{
+		0xe2, // software reset command 
+		0xae, //DON = 0: display OFF
+		0x60, // display start line:0x40-0x7f erc12864-14 has funny line indexing
+		0xa1, //ADC = 1: reverse direction(SEG132->SEG1)
+		0xA6, //REV = 0: non-reverse display
+		0xA4, //EON = 0: normal display. non-entire
+		0xA3, // Select LCD : A2 = 1/9 bias, A3 = 1/7 bias for 1/65 duty
+		0xC0, //SHL = 0: normal direction (COM0->COM63) 
+		// 0xf8, // Booster ratio set command
+		// 0x00, // Booster ratio set to 0, == 2x,3x,4x mode
+		0x2F, //Control power circuit operation VC=VR=VF=1 :0x28-0x2f
+		0x25, //Select int resistance ratio R2 R1 R0  : 0x20-0x27
+		0x81, // Electronic volume mode set command
+		0x20, // Electronic volume register set -- Brightness value (0-3f)
 
-const static uint8_t Lcd_ERC12864_2[] =
-{
-   0xe2, //Initialize the internal functions
-   0xae, //DON = 0: display OFF
-   0xa1, //ADC = 1: reverse direction(SEG132->SEG1)
-   0xA6, //REV = 0: non-reverse display
-   0xA4, //EON = 0: normal display. non-entire
-   0xA3, // Select LCD bias=0
-   0xC0, //SHL = 0: normal direction (COM1->COM64)
-   0x2F, //Control power circuit operation VC=VR=VF=1
-   0x27, //Select int resistance ratio R2 R1 R0 =5
-   0x81, //Set reference voltage Mode
-   0x2D, // 24 SV5 SV4 SV3 SV2 SV1 SV0 = 0x18
-   0xAF  //DON = 1: display ON
-} ;
+		0xAF  //DON = 1: display ON
+	} ;
+#endif	
+#if defined ERC24064_1
+/*	
+		Display controller has actually 128 horizontal lines, addresses as 16 pages of 8 bits,
+    but the attached LCD display has only 64 horizontal lines (8 pages), so they 
+		wired the lcd lines to pages 4-12 leaving the first and last 4 pages worth or lines from the controller 
+		dangling.  
+		This could normally be compensated by setting the "Start Line Register" to shift the output to the 
+		scan lines, but the UC1608 controller chip for some reason can only shift up to 64 lines out of the 128.
+		Therefore the only way to get the contents displayed in the LCD area is to start writing the data 
+	  starting at page 4 instead of 0 , hence the #define PAGE_ADDR_OFFSET below 
+
+		Since only 128 columns of the 240 wide screen is used here the column start adress needs to be shifted by 
+		(240-128)/2 to center the display area.
+
+		The X axis is mirrored by default settings and needs to be inverted with the commnad below -- Sense is different 
+		from all the other displays 
+*/
+	#define PAGE_ADDR_OFFSET 4  // for erc24064-1
+	#define COL_ADDR_OFFSET 56  // for erc24064-1
+	#define LCD_MAX_X 240
+	#define LCD_CLEAR_NEEDED
+	const static uint8_t Lcd_init[] =
+	{
+	  0xe2, //Initialize the internal functions -- not really needed using the reset line
+		0xae, //DOF
+		0x90, // no fixed lines
+		0xc0 |0x4, 	// mirror , 4=X, 8=y
+		0x40 |0x0,	// scan line start 0 -- but needs page offset of 4 for this device
+		0x81,0x24,  //contrast setting, a good starting point -- gets overwritten later
+		0xAF,  //DON = 1: display ON
+		} ;
+#endif
+
+#if defined ERC12864_2
+	#define PAGE_ADDR_OFFSET 0
+	#define COL_ADDR_OFFSET 0
+	#define LCD_MAX_X 135
+	const static uint8_t Lcd_init[] =
+	{
+		0xe2, //Initialize the internal functions
+		0xae, //DON = 0: display OFF
+		0xa1, //ADC = 1: reverse direction(SEG132->SEG1)
+		0xA6, //REV = 0: non-reverse display
+		0xA4, //EON = 0: normal display. non-entire
+		0xA3, // Select LCD bias=0
+		0xC0, //SHL = 0: normal direction (COM1->COM64)
+		0x2F, //Control power circuit operation VC=VR=VF=1
+		0x27, //Select int resistance ratio R2 R1 R0 =5
+		0x81, //Set reference voltage Mode
+		0x2D, // 24 SV5 SV4 SV3 SV2 SV1 SV0 = 0x18
+		0xAF  //DON = 1: display ON
+	} ;
+#endif	
+#ifndef LCD_MAX_X // presumably the original er9x LCD
+#warning "OLD er9x lcd is being used NOT aftermarket ERC type !!!!!"
+	#define PAGE_ADDR_OFFSET 0
+	#define COL_ADDR_OFFSET 0
+	#define LCD_MAX_X 135
+	const static uint8_t Lcd_init[] =
+	{
+		0xe2,		// Reset
+		0xae,		// Display off
+		0xa1,		// Reverse segment drive
+		0xA6,		// Display normal (not inverse)
+		0xA4,		// Display normal (not all on)
+		0xA2,		// Bias low (A3 for high)
+		0xC0,		// Scan Com0->Com63
+		0x2F,		// Internal power mode
+		0x25,		// Internal Vreg ratio high(ish)
+		0x81,	0x22,		// Contrast
+	#ifndef REVX
+		0xAF		// Display on
+	#endif
+	} ;	
+#endif
 
 void lcd_init()
 {
 	register Pio *pioptr ;
 	uint32_t i ;
-  // /home/thus/txt/datasheets/lcd/KS0713.pdf
-  // ~/txt/flieger/ST7565RV17.pdf  from http://www.glyn.de/content.asp?wdid=132&sid=
 
-
-
-// read the inputs, and lock the LCD lines
+ // read the inputs, and lock the LCD lines
 	LcdInputs = PIOC->PIO_PDSR << 1 ; // 6 LEFT, 5 RIGHT, 4 DOWN, 3 UP ()
 	LcdLock = 1 ;
-//	pioptr = PIOA ;
-//	pioptr->PIO_PER = LCD_A0 ;		// Enable bit 7 (LCD-A0)
-//	pioptr->PIO_CODR = LCD_A0 ;
-//	pioptr->PIO_OER = LCD_A0 ;		// Set bit 7 output
 	pioptr = PIOC ;
-	
+
 #ifdef REVX
 	pioptr->PIO_PER = PIO_PC27 | PIO_PC12 | 0xFF ;		// Enable bits 27,26,13,12,7-0
 #else
 	pioptr->PIO_PER = PIO_PC27 | PIO_PC26 | PIO_PC13 | PIO_PC12 | 0xFF ;		// Enable bits 27,26,13,12,7-0
 #endif // REVX
 
-//#ifndef REVX
-//	pioptr->PIO_CODR = LCD_E | LCD_RnW ;
-//	pioptr->PIO_SODR = LCD_RES | LCD_CS1 ;
-//#else 
+
 #ifdef REVX
 	pioptr->PIO_CODR = LCD_E ;
 	pioptr->PIO_CODR = LCD_RnW | LCD_CS1 ;	// No longer needed, used elsewhere
 #else
 	pioptr->PIO_CODR = LCD_E | LCD_RnW | LCD_CS1 ;
 #endif // REVX
+
 	pioptr->PIO_SODR = LCD_RES ;
-//#endif 
 	pioptr->PIO_OER = PIO_PC27 | PIO_PC26 | PIO_PC13 | PIO_PC12 | 0xFF ;		// Set bits 27,26,13,12,7-0 output
 	pioptr->PIO_OWER = 0x000000FFL ;		// Allow write to ls 8 bits in ODSR
 
-	pioptr->PIO_CODR = LCD_RES ;		// Reset LCD
-	configure_pins( LCD_A0, PIN_ENABLE | PIN_INPUT | PIN_PORTA | PIN_PULLUP ) ;
-	TC0->TC_CHANNEL[0].TC_CCR = 5 ;	// Enable clock and trigger it (may only need trigger)
-	while ( TC0->TC_CHANNEL[0].TC_CV < 200 )		// >10 uS, Value depends on MCK/2 (used 18MHz)
-	{
-		// Wait
-	}
-  if ( ( PIOA->PIO_PDSR & LCD_A0 ) == 0 )
-	{
-		ErcLcd = 1 ;
-	}	 
+
 	configure_pins( LCD_A0, PIN_ENABLE | PIN_LOW | PIN_OUTPUT | PIN_PORTA | PIN_NO_PULLUP ) ;
-	pioptr->PIO_SODR = LCD_RES ;		// Remove LCD reset
+
 	TC0->TC_CHANNEL[0].TC_CCR = 5 ;	// Enable clock and trigger it (may only need trigger)
-	while ( TC0->TC_CHANNEL[0].TC_CV < 27000 )	// 1500 uS, Value depends on MCK/2 (used 18MHz)
+	pioptr->PIO_CODR = LCD_RES ;		// Reset LCD
+
+	while ( TC0->TC_CHANNEL[0].TC_CV < 200 )		// >10 uS, Value depends on MCK/8
+		; // Wait
+
+
+	TC0->TC_CHANNEL[0].TC_CCR = 5 ;	// Enable clock and trigger it (may only need trigger)
+	pioptr->PIO_SODR = LCD_RES ;		// Remove LCD reset
+
+
+	while ( TC0->TC_CHANNEL[0].TC_CV < 1500 )	//  1500 uS, Value depends on MCK/8
 	{
-		// Wait
+		wdt_reset(); // Wait
 	}
-	for ( i = 0 ; i < 12 ; i += 1 )
+
+	// send the required initialization bytes
+	for ( i = 0 ; i < sizeof(Lcd_init) ; i++ )
+	  lcdSendCtl( Lcd_init[i] ) ;
+	
+
+// Clears the LCD display  --- all the postions -- Needed if the LCD does not fully clear it's memory
+// upon Harware reset
+
+#ifdef  LCD_CLEAR_NEEDED	
+{ 
+	uint8_t col_offset ;
+	for ( uint8_t page_addr=0;page_addr <8; page_addr++)
 	{
-	  lcdSendCtl( ErcLcd ? Lcd_ERC12864_2[i] : Lcdinit[i] ) ;
+
+		col_offset = 0;
+
+		lcdSendCtl( 0 |  (col_offset&0xf) ) ;	// address LCD hw column0
+		lcdSendCtl(0x10 | ((col_offset & 0xf0) >>4 )); // send column-address-high commnad -- data part always 0
+		lcdSendCtl( 0xB0 | (page_addr+PAGE_ADDR_OFFSET )); // send page addr command with ored in pageaddr and page addr offset
+		
+		PIOA->PIO_SODR = LCD_A0 ;			// Data
+		for( uint8_t col_addr=0; col_addr< LCD_MAX_X; col_addr++ )	// fill all data memory of the LCD with 0 -- there are more than 128 col
+		{
+			
+			pioptr->PIO_ODSR = 0;	// just clear it
+			pioptr->PIO_SODR = LCD_E ;	// Start E pulse
+
+			// Need a delay here (250nS)
+			TC0->TC_CHANNEL[0].TC_CCR = 5 ;	
+
+			while ( TC0->TC_CHANNEL[0].TC_CV < 500 )		// Value depends on MCK/8
+			; 		// Wait for the lcd having received the byte
+		
+			pioptr->PIO_CODR = LCD_E ;			// End E pulse
+
+		}
+		PIOA->PIO_CODR = LCD_A0 ;			// commands 
+
+
 	}
+}
+#endif
+
 
 	pioptr->PIO_ODR = 0x0000003AL ;		// Set bits 1, 3, 4, 5 input
 	pioptr->PIO_PUER = 0x0000003AL ;		// Set bits 1, 3, 4, 5 with pullups
 	pioptr->PIO_ODSR = 0 ;							// Drive D0 low
+
 	LcdLock = 0 ;
-
-#ifdef REVX
-	lcdSetRefVolt( 23 ) ;
-#else
-	lcdSetRefVolt( 30 ) ;
-#endif
-
 }
 
 
@@ -649,6 +763,7 @@ void lcdSendCtl(uint8_t val)
 	PIOA->PIO_SODR = LCD_A0 ;				// Data
 }
 
+
 #ifdef SIMU
 void refreshDisplay()
 {
@@ -658,11 +773,11 @@ void refreshDisplay()
 #else
 void refreshDisplay()
 {
+
 	register Pio *pioptr ;
-  register uint8_t *p=DisplayBuf;
-	register uint32_t y ;
-	register uint32_t x ;
-	register uint32_t z ;
+  register uint8_t *p=DisplayBuf; // pointer to THE display buffer -- will be used to itterate through buffer
+	uint8_t lcd_page_addr;
+	uint8_t column_start_lo; 
 	register uint32_t ebit ;
 
 	ebit = LCD_E ;
@@ -677,36 +792,57 @@ void refreshDisplay()
 
 	pioptr = PIOC ;
 	pioptr->PIO_OER = 0x0C0030FFL ;		// Set bits 27,26,15,13,12,7-0 output
-  for( y=0; y < 8; y++) {
-    lcdSendCtl( OptrexDisplay ? 0 : 0x04 ) ;
-    lcdSendCtl(0x10); //column addr 0
-    lcdSendCtl( y | 0xB0); //page addr y
-    
-#ifndef REVX
+
+  for( lcd_page_addr=0; lcd_page_addr < 8; lcd_page_addr++) // set the next page address and start column in the LCD
+	{
+			// not dealing with flipped display
+#ifdef ERC12864_14	
+			column_start_lo = COL_ADDR_OFFSET+3; 	
+#elif defined ERC24064_1
+			column_start_lo = COL_ADDR_OFFSET;
+#else
+			column_start_lo = COL_ADDR_OFFSET+4; 
+#endif			
+		lcdSendCtl( column_start_lo &0xf) ;
+		lcdSendCtl(0x10 | ((column_start_lo & 0xf0 )>>4)) ; // send column-address-high commnad -- data part always 0
+		lcdSendCtl( 0xB0 | (lcd_page_addr + PAGE_ADDR_OFFSET)); // send page addr command with ored in pageaddr
+ 
+#if (!defined(REVX) )
 		pioptr->PIO_CODR = LCD_CS1 ;		// Select LCD
-#endif // REVX
+#endif // nREVX 
 
 		PIOA->PIO_SODR = LCD_A0 ;			// Data
-#ifndef REVX
+#if (!defined(REVX) )
 		pioptr->PIO_CODR = LCD_RnW ;		// Write
-#endif // REVX
-		 
-		x =	*p ;
-    for( z=0; z<128; z+=1)
-		{
-			pioptr->PIO_ODSR = x ;
-			pioptr->PIO_SODR = ebit ;			// Start E pulse
-			// Need a delay here (250nS)
-			p += 1 ;
-			x =	*p ;
-			pioptr->PIO_CODR = ebit ;			// End E pulse
-    }
-  }
-	pioptr->PIO_ODSR = 0xFF ;					// Drive lines high
-	pioptr->PIO_PUER = 0x0000003AL ;	// Set bits 1, 3, 4, 5 with pullups
-	pioptr->PIO_ODR = 0x0000003AL ;		// Set bits 1, 3, 4, 5 input
-	pioptr->PIO_ODSR = 0xFE ;					// Drive D0 low
+#endif // nREVX 
 
+// note magic number 128 !!
+		for( int line_cnt=0; line_cnt < 128; line_cnt++)	// transmitting one line to LCD before next page address needs to be set again
+		{
+
+			pioptr->PIO_ODSR = *p++ ;			// copy the display buffer data to the LCD	
+			pioptr->PIO_SODR = ebit ;			// Start E pulse
+
+			// Need a delay here (250nS)
+			TC0->TC_CHANNEL[0].TC_CCR = 5 ;	// Enable clock and trigger it (may only need trigger)
+
+			while ( TC0->TC_CHANNEL[0].TC_CV < 500 )		// Value depends on MCK/8
+			; 		// Wait for the lcd having received the byte
+		
+			pioptr->PIO_CODR = ebit ;			// End E pulse
+		} // end column for loop
+	} // end page for loop
+
+	pioptr->PIO_ODSR = 0xFF ;					// Drive lines high
+
+	pioptr->PIO_PUER = 0x000000FEL ;	// Set bits 1, 3, 4, 5 with pullups
+	pioptr->PIO_ODR = 0x000000FEL ;		// Set bits 1, 3, 4, 5 input
+	// ????
+	//	pioptr->PIO_PUER = 0x0000003AL ;	// Set bits 1, 3, 4, 5 with pullups
+	//  pioptr->PIO_ODR = 0x0000003AL ;		// Set bits 1, 3, 4, 5 input
+	// ????
+
+	pioptr->PIO_ODSR = 0xFE ;					// Drive D0 low
 	LcdLock = 0 ;
 
 }
